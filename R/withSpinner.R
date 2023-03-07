@@ -177,3 +177,199 @@ add_style <- function(x) {
     )
   )
 }
+
+#' @export
+#' @describeIn show-hide
+#'
+showSpinner <- function(output_id,
+                        session = shiny::getDefaultReactiveDomain()) {
+
+  sel <- glue::glue("$('#{session$ns(output_id)}')")
+
+  js <- glue::glue(
+    "{sel}.siblings('.load-container, .shiny-spinner-placeholder')",
+      ".removeClass('shiny-spinner-hidden');",
+    "{sel}.addClass('recalculating');",
+    "if ({sel}.closest('.shiny-spinner-output-container')",
+      ".hasClass('shiny-spinner-hideui')) {{",
+        "{sel}.siblings('.load-container')",
+          ".siblings('.shiny-bound-output')",
+          ".css('visibility', 'hidden');",
+        "{sel}.siblings('.shiny-spinner-placeholder')",
+          ".siblings('.shiny-bound-output')",
+          ".addClass('shiny-spinner-hidden');",
+    "}}"
+  )
+
+  shinyjs::runjs(js)
+
+}
+
+#' @export
+#' @describeIn show-hide
+#'
+hideSpinner <- function(output_id,
+                        session = shiny::getDefaultReactiveDomain()) {
+
+  sel <- glue::glue("$('#{session$ns(output_id)}')")
+
+  js <- glue::glue(
+    "{sel}.siblings('.load-container, .shiny-spinner-placeholder')",
+      ".addClass('shiny-spinner-hidden');",
+    "{sel}.removeClass('recalculating');",
+    "if ({sel}.closest('.shiny-spinner-output-container')",
+      ".hasClass('shiny-spinner-hideui')) {{",
+        "{sel}.siblings('.load-container')",
+          ".siblings('.shiny-bound-output')",
+          ".css('visibility', 'visible');",
+        "{sel}.siblings('.shiny-spinner-placeholder')",
+          ".siblings('.shiny-bound-output')",
+        ".removeClass('shiny-spinner-hidden');",
+    "}}"
+  )
+
+  shinyjs::runjs(js)
+
+}
+
+#' @title Show or hide a CSS spinner from the shiny server function
+#'
+#' @param output_id The id used when creating the output element in the shiny
+#' UI function.
+#' @param session The shiny session used to interact with the output element.
+#' The default (\code{shiny::getDefaultReactiveDomain()}) will work for simple
+#' shiny apps, but you may need to specify the session argument for use in
+#' shiny modules.
+#' 
+#' @name show-hide
+#'
+#' @examples
+#' if (interactive()) {
+#' 
+#'   library(shiny)
+#'   library(reactable)
+#'   library(magrittr)
+#'   library(shinycssloaders)
+#'   
+#'   slow_cars <- function() {
+#'     Sys.sleep(3)
+#'     random_cars <- mtcars[sample(seq_len(nrow(mtcars)), size = 10), ]
+#'     cbind(
+#'       model = rownames(random_cars),
+#'       data.frame(random_cars, row.names = NULL)
+#'     )
+#'   }
+#'   
+#'   ui <- fluidPage(
+#'     titlePanel("Show/Hide Spinners"),
+#'     mainPanel(
+#'       width = 12,
+#'       shinyjs::useShinyjs(),
+#'       tabsetPanel(
+#'         tabPanel(
+#'           "Without Show/Hide",
+#'           reactableOutput("tbl_orig", height = 600) %>% 
+#'             withSpinner(type = 5),
+#'           helpText(
+#'             paste(
+#'               "Shows a typical app setup where the table's render function",
+#'               "includes a dependency on the button."
+#'             ),
+#'             "Click the 'Update' button to simulate a long-running calculation.",
+#'             paste(
+#'               "Each time you click the button the table is completely",
+#'               "re-rendered, so filters/sorting are lost."
+#'             )
+#'           ),
+#'           actionButton("update_orig", "Update")
+#'         ),
+#'         tabPanel(
+#'           "In Code",
+#'           reactableOutput("tbl_code", height = 600) %>% 
+#'             withSpinner(type = 5),
+#'           helpText(
+#'             paste(
+#'               "Shows how re-rendering can be avoided so that the table state is",
+#'               "maintained, while still providing visual feedback via the spinner."
+#'             ),
+#'             "Click the 'Update' button to simulate a long-running calculation.",
+#'             paste(
+#'               "This version replaces the data in the table without re-rendering,",
+#'               "but it requires showSpinner and hideSpinner."
+#'             )
+#'           ),
+#'           actionButton("update_code", "Update")
+#'         ),
+#'         tabPanel(
+#'           "Via Button",
+#'           reactableOutput("tbl_manual", height = 600) %>% 
+#'             withSpinner(type = 5),
+#'           helpText(
+#'             "Shows how other app elements can be used to invoke the spinners."
+#'           ),
+#'           actionButton("show", "Show Spinner"),
+#'           actionButton("hide", "Hide Spinner")
+#'         )
+#'       )
+#'     )
+#'   )
+#'   
+#'   server <- function(input, output, session) {
+#'     
+#'     ##############################################################################
+#'     
+#'     # typical app
+#'     # table re-renders completely when data changes
+#'     # table state (filters, sorting) is lost on re-render
+#'     
+#'     output$tbl_orig <- renderReactable({
+#'       input$update_orig
+#'       slow_cars() %>% 
+#'         reactable(filterable = TRUE, selection = "multiple")
+#'     })
+#'     
+#'     ##############################################################################
+#'     
+#'     # using showSpinner/hideSpinner
+#'     # table state (filters, sorting) is maintained by replacing data
+#'     # without re-rendering
+#'     
+#'     output$tbl_code <- renderReactable({
+#'       # no dependency, data changes in observeEvent
+#'       slow_cars() %>% 
+#'         reactable(filterable = TRUE, selection = "multiple")
+#'     })
+#'     
+#'     observeEvent(input$update_code, {
+#'       
+#'       showSpinner("tbl_code")
+#'       
+#'       x <- slow_cars()
+#'       
+#'       updateReactable("tbl_code", data = x)
+#'       
+#'       hideSpinner("tbl_code")
+#'       
+#'     })
+#'     
+#'     ##############################################################################
+#'     
+#'     # using showSpinner/hideSpinner via buttons
+#'     
+#'     output$tbl_manual <- renderReactable({
+#'       # no dependency, data never changes
+#'       slow_cars() %>% 
+#'         reactable(filterable = TRUE, selection = "multiple")
+#'     })
+#'     
+#'     observeEvent(input$show, showSpinner("tbl_manual"))
+#'     
+#'     observeEvent(input$hide, hideSpinner("tbl_manual"))
+#'     
+#'   }
+#'   
+#'   # Run the application 
+#'   shinyApp(ui = ui, server = server, options = list(display.mode = "showcase"))
+#' 
+#' }
+NULL
